@@ -1,0 +1,644 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const rawPhone = String($json.candidate_details?.phone || '');\nlet phone = rawPhone.replace(/[()\\s.-]/g, '');\n\nif (phone.startsWith('00')) phone = '+' + phone.slice(2);\nif (!phone.startsWith('+') && phone.startsWith('92')) phone = '+' + phone;\nif (!phone.startsWith('+') && phone.startsWith('0')) phone = '+92' + phone.slice(1);\n\nconst canCallCandidate = /^\\+[1-9]\\d{9,14}$/.test(phone);\n\nreturn [{\n  json: {\n    ...$json,\n    candidate_details: {\n      ...$json.candidate_details,\n      phone\n    },\n    can_call_candidate: canCallCandidate\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6528,
+        1616
+      ],
+      "id": "f3e620d7-62c2-4b12-ab35-08112a74715f",
+      "name": "Clean Phone For Retell"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.can_call_candidate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "c34063d3-0ead-4754-9bdf-772030547aba"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -6352,
+        1616
+      ],
+      "id": "87472bd5-3370-4d3f-b6a4-83fe808a4be1",
+      "name": "Has Valid Phone?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.retellai.com/v2/create-phone-call",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer key_bb43f4c935269b01b33eb0ba52d6"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from_number\": \"+16812211076\",\n  \"to_number\": \"{{ $json.candidate_details.phone }}\",\n  \"override_agent_id\": \"agent_f530fccc3a99d83e23fa982914\",\n  \"retell_llm_dynamic_variables\": {\n    \"candidate_name\": \"{{ $json.candidate_details.name || 'Candidate' }}\",\n    \"job_title\": \"{{ $json.job_title || '' }}\",\n    \"match_score\": \"{{ $json.match_score || $('AI Agent1').item.json.output.match_score || '' }}\",\n    \"candidate_summary\": \"{{ $json.summary || '' }}\",\n    \"matched_skills\": \"{{ ($json.matched_skills || []).join(', ') }}\",\n    \"missing_skills\": \"{{ ($json.missing_skills || []).join(', ') }}\"\n  },\n  \"metadata\": {\n    \"candidate_name\": \"{{ $json.candidate_details.name || '' }}\",\n    \"candidate_email\": \"{{ $json.candidate_details.email || '' }}\",\n    \"candidate_phone\": \"{{ $json.candidate_details.phone || '' }}\",\n    \"source_file\": \"{{ $json.source_file || '' }}\",\n    \"email_subject\": \"{{ $json.email_subject || '' }}\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6096,
+        1600
+      ],
+      "id": "26a23350-a517-4e9c-b235-0b9864c71d7e",
+      "name": "Call Candidate With Retell AI"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "readStatus": "unread"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "name": "Gmail Trigger1",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [
+        -8816,
+        1632
+      ],
+      "id": "ce582ebc-218c-4bed-a6c8-248dad7d4064",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "DUnFOyLffmkRBntC",
+          "name": "MR Gullu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -8592,
+        1632
+      ],
+      "id": "e3619c2a-e9be-4c5a-86bf-5a437369c0b8",
+      "name": "Get Message With Attachments1",
+      "webhookId": "93bb7976-c441-41ab-9121-8f8aff4c232c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "DUnFOyLffmkRBntC",
+          "name": "MR Gullu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n\n  for (const key of Object.keys(binary)) {\n    const file = binary[key];\n    const fileName = file.fileName || key;\n    const mimeType = (file.mimeType || '').toLowerCase();\n\n    if (fileName.toLowerCase().endsWith('.pdf') || mimeType.includes('pdf')) {\n      output.push({\n        json: {\n          gmail_id: item.json.id || '',\n          thread_id: item.json.threadId || '',\n          subject: item.json.Subject || item.json.subject || '',\n          from: item.json.From || item.json.from || '',\n          to: item.json.To || item.json.to || '',\n          file_name: fileName\n        },\n        binary: {\n          data: file\n        }\n      });\n    }\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8368,
+        1632
+      ],
+      "id": "7343c856-ad86-457f-a08c-b062c61d51d5",
+      "name": "Prepare PDF Attachments1"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -8144,
+        1632
+      ],
+      "id": "2c653213-c129-462d-b597-80ff36a45aaf",
+      "name": "Extract CV Text1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cv_text",
+              "name": "cv_text",
+              "value": "={{ $json.text || $json.data || $json.content || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "source_file",
+              "name": "source_file",
+              "value": "={{ $('Prepare PDF Attachments1').item.json.file_name }}",
+              "type": "string"
+            },
+            {
+              "id": "source_email",
+              "name": "source_email",
+              "value": "={{ $('Prepare PDF Attachments1').item.json.from }}",
+              "type": "string"
+            },
+            {
+              "id": "email_subject",
+              "name": "email_subject",
+              "value": "={{ $('Prepare PDF Attachments1').item.json.subject }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -7920,
+        1632
+      ],
+      "id": "816fd99b-a28c-4ebf-b2c3-f4e4431b89b0",
+      "name": "Prepare AI Input1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=CV TEXT:\n{{ $json.cv_text }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an AI Recruitment Screening Agent.\n\nAnalyze the candidate CV for this role:\n\nJob Title: Senior Sales Professional / FMCG Sales Manager\n\nRequired Experience:\n- Minimum 8-15+ years in FMCG sales and distribution\n- Territory management and market expansion\n- Proven sales target/KPI achievement\n- Distributor and dealer network management\n- Sales team and field staff leadership\n\nRequired Skills:\n- Sales Strategy & Revenue Growth\n- Team Leadership & Staff Management\n- Distributor & Channel Management\n- Market Expansion\n- Key Account Management\n- KPI Monitoring & Reporting\n- Sales Forecasting\n- Customer Relationship Management\n- Credit Control & Receivables Management\n- Route Planning & Market Coverage\n\nEducation:\n- Bachelor's degree in Commerce, Business Administration, Marketing, or related field\n\nReturn ONLY valid JSON. Do not invent missing information. recommended=true only if candidate is suitable for interview shortlist."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -7696,
+        1632
+      ],
+      "id": "eda4cc40-531f-456d-aae6-fb936b41661d",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -7696,
+        1856
+      ],
+      "id": "9e547ce1-e0bc-4237-9c53-137594adc47c",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "l3eEmr0upP89TsWr",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"job_title\", \"decision\", \"match_score\", \"summary\", \"recommended\", \"candidate_details\"],\n  \"properties\": {\n    \"job_title\": { \"type\": \"string\" },\n    \"decision\": { \"type\": \"string\", \"enum\": [\"GOOD MATCH\", \"PARTIAL MATCH\", \"NOT A MATCH\"] },\n    \"match_score\": { \"type\": \"number\" },\n    \"summary\": { \"type\": \"string\" },\n    \"matched_skills\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"missing_skills\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"matched_requirements\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"missing_requirements\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"years_of_experience\": { \"type\": \"string\" },\n    \"industry_experience\": { \"type\": \"string\" },\n    \"education\": { \"type\": \"string\" },\n    \"recommended\": { \"type\": \"boolean\" },\n    \"rejection_reason\": { \"type\": \"string\" },\n    \"candidate_details\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": { \"type\": \"string\" },\n        \"email\": { \"type\": \"string\" },\n        \"phone\": { \"type\": \"string\" },\n        \"location\": { \"type\": \"string\" }\n      }\n    }\n  }\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -7568,
+        1856
+      ],
+      "id": "c27beb35-6b90-421c-85e4-d6d8924ade76",
+      "name": "Structured Output Parser1",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $json.output || $json;\nconst score = Number(output.match_score || 0);\nconst decision = String(output.decision || '').trim().toUpperCase();\nconst recommended = Boolean(output.recommended);\n\nreturn [{\n  json: {\n    ...output,\n    match_score: score,\n    decision,\n    send_to_slack: recommended && ['GOOD MATCH', 'PARTIAL MATCH'].includes(decision),\n    source_file: $('Prepare AI Input1').item.json.source_file,\n    source_email: $('Prepare AI Input1').item.json.source_email,\n    email_subject: $('Prepare AI Input1').item.json.email_subject\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7344,
+        1632
+      ],
+      "id": "1f055898-aa8c-4f1e-98f7-aa4f2d330da2",
+      "name": "Normalize Screening Result1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send_to_slack }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "12e26581-d3d7-489d-a5fa-ea02c16d7457"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -7120,
+        1632
+      ],
+      "id": "b07c224f-d914-47c1-a2c0-d2cb9413454b",
+      "name": "Candidate Qualifies?1"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0B1VGYTGHM",
+          "mode": "list",
+          "cachedResultName": "all-syenxatech"
+        },
+        "text": "=*New Shortlisted Candidate*\n\n*Job Title:* {{ $json.job_title }}\n*Decision:* {{ $json.decision }}\n*Match Score:* {{ $json.match_score }}%\n\n*Name:* {{ $json.candidate_details.name || 'N/A' }}\n*Email:* {{ $json.candidate_details.email || 'N/A' }}\n*Phone:* {{ $json.candidate_details.phone || 'N/A' }}\n*Location:* {{ $json.candidate_details.location || 'N/A' }}\n\n*Summary:*\n{{ $json.summary }}\n\n*Source File:* {{ $json.source_file }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -6832,
+        1616
+      ],
+      "id": "3639d08c-665b-4961-8dc9-c762bab137a5",
+      "name": "Send Candidate to Slack1",
+      "webhookId": "a3b196b5-fcfa-416d-a98f-316522744dd7",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "MhvUvLN8hRKfhi5l",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "retell-call-result",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -8608,
+        2288
+      ],
+      "id": "6b5e28a8-69c8-4801-80a6-00dc1c01c4df",
+      "name": "Retell Webhook",
+      "webhookId": "60958e4c-99c4-47f1-bc9d-6db6807cfbda"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.event_type }}",
+              "rightValue": "call_analyzed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -8384,
+        2288
+      ],
+      "id": "9ba6e0c9-11ee-4973-b355-6e30561bdc5d",
+      "name": "Is Call Analyzed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst call = body.call || {};\nconst analysis = call.call_analysis || {};\nconst metadata = call.metadata || {};\n\nreturn [{\n  json: {\n    call_id: call.call_id || '',\n    call_status: call.call_status || '',\n    disconnection_reason: call.disconnection_reason || '',\n    candidate_name: metadata.candidate_name || '',\n    candidate_email: metadata.candidate_email || '',\n    candidate_phone: metadata.candidate_phone || call.to_number || '',\n    source_file: metadata.source_file || '',\n    call_summary: analysis.call_summary || '',\n    call_successful: analysis.call_successful || false,\n    user_sentiment: analysis.user_sentiment || '',\n    in_voicemail: analysis.in_voicemail || false,\n    transcript: call.transcript || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8160,
+        2224
+      ],
+      "id": "e37eebef-886b-4f1a-8d9e-3f8ae956f188",
+      "name": "Normalize Retell Result"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0B1VGYTGHM",
+          "mode": "list",
+          "cachedResultName": "all-syenxatech"
+        },
+        "text": "=*Retell AI Call Completed*\n\n*Candidate:* {{ $json.candidate_name || 'N/A' }}\n*Phone:* {{ $json.candidate_phone || 'N/A' }}\n*Email:* {{ $json.candidate_email || 'N/A' }}\n\n*Call Status:* {{ $json.call_status }}\n*Successful:* {{ $json.call_successful }}\n*Sentiment:* {{ $json.user_sentiment || 'N/A' }}\n*Voicemail:* {{ $json.in_voicemail }}\n*Reason:* {{ $json.disconnection_reason || 'N/A' }}\n\n*Summary:*\n{{ $json.call_summary || 'No summary available' }}\n\n*Source File:* {{ $json.source_file || 'N/A' }}\n*Call ID:* {{ $json.call_id }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -7936,
+        2224
+      ],
+      "id": "19b8a2d5-f6e9-46b3-a58d-f296b6748873",
+      "name": "Send Call Result to Slack",
+      "webhookId": "ca5309b9-5791-40a2-a096-941c460d12dd",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "MhvUvLN8hRKfhi5l",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": true}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -7712,
+        2288
+      ],
+      "id": "fab9f216-7172-4ef9-81f5-8e0b32443a78",
+      "name": "Respond to Retell"
+    },
+    {
+      "parameters": {
+        "content": "Retell AI | Phone Number connection",
+        "height": 240,
+        "width": 816
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -6624,
+        1552
+      ],
+      "typeVersion": 1,
+      "id": "97d7c538-bf90-4e4f-a633-b623258a6bc5",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "Clean Phone For Retell": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Phone?": {
+      "main": [
+        [
+          {
+            "node": "Call Candidate With Retell AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Get Message With Attachments1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message With Attachments1": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF Attachments1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Attachments1": {
+      "main": [
+        [
+          {
+            "node": "Extract CV Text1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV Text1": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Screening Result1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Screening Result1": {
+      "main": [
+        [
+          {
+            "node": "Candidate Qualifies?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidate Qualifies?1": {
+      "main": [
+        [
+          {
+            "node": "Send Candidate to Slack1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retell Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Call Analyzed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Analyzed?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Retell Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Retell",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Retell Result": {
+      "main": [
+        [
+          {
+            "node": "Send Call Result to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Call Result to Slack": {
+      "main": [
+        [
+          {
+            "node": "Respond to Retell",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "341e0e033f494b9235d9435d1b419e426b081d25de270fb8692162c206ea05db"
+  }
+}
